@@ -9,8 +9,8 @@ crawlr recursively crawls URLs.
 Make sure that your local 8000 and 5432 ports aren't allocated by any local
 services before running the following command, otherwise the services will fail
 to start. This following command will spin up a postgres container, a container
-running the crawlr API (on localhost:8000/), and a worker container for the
-crawler.
+running the crawlr API (serving on localhost:8000/), and a worker container for
+the crawler.
 
 ```bash
 DSN="postgresql://user:test@db:5432/crawlr" MAX_WORKERS=30 docker-compose -f ./deployments/docker-compose.yml up --build
@@ -135,14 +135,15 @@ the graph for a single CrawlRequest.
 
 ### Crawler
 
-The crawler continually retrieves more incomplete tasks from the `tasks` table.
-For every task, the crawler will check if a page node has already been created
-for the page URL in the `page_nodes` table. 
+The crawler is responsible for unfolding the graph that the API server relies
+on. The crawler continually retrieves more incomplete tasks from the `tasks`
+table. For every task, the crawler will check if a page node has already been
+created for the page URL in the `page_nodes` table. 
 
 If no such page node exists, the worker will create a page and insert it into
 the `page_nodes` table and make a GET request to the URL. It will then create
 new nodes for all the new hosts found, as well as edges from the current page
-nodes to the newly created page nodes. Otherwise, if a page has already been
+node to the newly created page nodes. Otherwise, if a page has already been
 created for the URL, the `task` will retrieve all page nodes with edges where
 the source node is the current page node. 
 
@@ -152,18 +153,18 @@ should be created, the crawler uses the retrieved URLs of pages (from found
 edges) or the retrieved URLs from the GET request, and inserts new tasks into
 the database, incrementing the level of recursion by 1. Once all new tasks (if
 any) are inserted into the database, the worker marks the current task as
-`COMPLETED` and finishes its job.
+`COMPLETED`.
 
 ## Deployment to Production
 
 Since everything is containerized, it should be relatively simple to deploy this
-to whatever container orchestration system is preferred. We could use a CI/CD
-tool like CircleCI or Github Actions to run unit and integration tests every
-time a new feature branch is merged into master, and to do automatic deploys to
-a staging or testing environment where an engineer could do additional QA or
-testing if necessary. Finally, the engineer can manually deploy changes to a
-production environment after the new changes have been tested to their
-satisfaction.
+to whatever container orchestration system is preferred (Kubernetes, ECS, etc.).
+We could use a CI/CD tool like CircleCI or Github Actions to run unit and
+integration tests every time a new feature branch is merged into master, and to
+do automatic deploys to a staging or testing environment where an engineer could
+do additional QA or testing if necessary. Finally, the engineer can manually
+deploy changes to a production environment after the new changes have been
+tested to their satisfaction.
 
 We also might want to use a hosted solution for the database instead of
 maintaining our own, such as AWS RDS or Google Cloud SQL. (I also barely set up
@@ -173,8 +174,8 @@ in the file itself for security reasons).
 
 In order to scale this, we'd need to put a load balancer in front of the API
 server to handle requests (and probably need to set up a domain for our API
-server, as well as provisioning TLS/SSL certs if we want our API to use HTTPS),
-but many container orchestration systems (like Kubernetes) make this easy.
+server, as well as provisioning TLS/SSL certs if we want our API to support
+HTTPS).
 
 ## Future Work
 
@@ -195,6 +196,10 @@ task will never be completed. I could create an additional service or function
 to find tasks that have been `IN_PROGRESS` for more than a specified amount of
 time, and restart that task by setting the task status back to `NOT_STARTED`.
 
+I could currently don't cache or save computed results for a CrawlRequest
+anywhere, so in the future I could add a column to the `crawl_requests` table to
+store this information to make results return faster.
+
 Other interesting things I'd like to add: distributed request tracing throughout
 the API and tasks, implementing better logging for the crawler/API (more
 informative JSON error messages), adding metrics for long it takes to crawl an
@@ -209,24 +214,30 @@ to only crawl content that the site owner wants to be crawled.
 
 ## Thoughts on Scalability
 
-The api and crawler should both be easily horizontally scalable, as they are
-stateless and rely on the database to store state. The crawler is also
-vertically scalable, as we can scale up the number of workers per crawler via a
-command line flag. I'm slightly worried about how to make the database more
-scalable - I don't have as much experience there, but I'd love to learn more
-about it.
+The api and crawler worker should both be easily horizontally scalable, as they
+are stateless and rely on the database to store state. They can be scaled up by
+increasing the number of replicas in whichever config file is needed for a
+chosen container orchestration platform (for example, in Kubernetes, we would
+make a Deployment object for the api and one for the crawler and specify the
+number of replicas we want.) 
+
+The number of workers in each crawler container is also scalable, as we can
+scale up the number of workers per crawler via a command line flag. I'm slightly
+worried about how to make the database more scalable - I don't have as much
+experience there, but I'd love to learn more about it.
 
 ## Learnings
 
 My original design involved doing all of the crawling for a single CrawlRequest
-on a single crawler, which involved working with a lot of goroutines, wait
-groups, and mutexes. The results/status would then be stored in the database
-when the CrawlRequest was complete. I redesigned the system to distribute tasks
-among crawlers instead because some pages have hundreds and thousands of links
-while others only have 1 or 2 links. This made it hard to reason about the work
-that each crawler would do in my first design - even if we scaled up the number
-of workers we had, some crawlers might end up with many magnitudes more work
-than other crawlers, based on the URL that they're responsible for crawling.
+on a single worker within a crawler instance, which involved working with a lot
+of goroutines, wait groups, and mutexes. The results/status would then be stored
+in the database when the CrawlRequest was complete. I redesigned the system to
+distribute tasks among crawlers instead because some pages have hundreds and
+thousands of links while others only have 1 or 2 links. This made it hard to
+reason about the work that each crawler would do in my first design - even if we
+scaled up the number of workers we had, some crawlers might end up with many
+magnitudes more work than other crawlers, based on the URL that they're
+responsible for crawling.
 
 When implementing the distributed task system, I ran into some issues working
 with concurrent database reads/writes (had deadlock situations when attempting
