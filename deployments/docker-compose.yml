@@ -1,0 +1,29 @@
+version: "3.4"
+
+services:
+  crawler-api:
+    build:
+      context: ../
+      dockerfile: images/crawlr/api/Dockerfile
+    ports:
+      - "8000:8000"
+    command: ["--dsn=$DSN"]
+    depends_on:
+      - db
+  crawler:
+    build:
+      context: ../
+      dockerfile: images/crawlr/crawler/Dockerfile
+    command: ["--dsn=$DSN", "--max-workers=$MAX_WORKERS"]
+    depends_on:
+      - db
+  db:
+    build:
+      context: ../images/db
+    ports:
+      - "5432:5432"
+    volumes:
+      - "db-data:/var/lib/postgresql/data"
+
+volumes:
+  db-data:
