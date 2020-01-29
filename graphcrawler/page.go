@@ -1,7 +1,6 @@
 package graphcrawler
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -19,8 +18,7 @@ func getRequest(url string) (*http.Response, error) {
 	} else if resp.StatusCode != 200 {
 		// for now, this ignores redirects & other possible non-error http
 		// status codes
-		fmt.Printf("Got status code: %d %v when crawling %s\n", resp.StatusCode, http.StatusText(resp.StatusCode), url)
-		return resp, errors.New("Received a non-200 status code")
+		return resp, fmt.Errorf("Received a non-200 status code: %d", resp.StatusCode)
 	}
 	return resp, nil
 }

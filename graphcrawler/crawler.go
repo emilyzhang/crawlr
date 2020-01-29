@@ -69,20 +69,21 @@ func (c *GraphCrawler) Start() {
 // the next pages for this page, and adding new tasks for those pages.
 func (c *GraphCrawler) run(t *crawlerdb.Task) {
 	defer c.wg.Done()
-	fmt.Printf("CrawlRequest %d: Starting new task (url %s, level %d)\n", t.CrawlRequestID, t.PageURL, t.CurrentLevel)
-
 	cr, err := c.db.GetCrawlRequest(t.CrawlRequestID)
 	if err != nil {
 		c.handleError(t, err)
 		return
 	}
-	// return immediately if we're on the last level of recursion, we don't need to crawl
-	// those hosts, we just needed the task to be created for host counting purposes
-	if t.CurrentLevel == cr.Levels {
+
+	// return immediately if we're on the last level of recursion or if we've
+	// already crawled this page, we don't need to crawl those pages, we just
+	// needed the task to be created for host counting purposes
+	if t.CurrentLevel == cr.Levels || t.SeenURL {
 		c.db.UpdateTaskStatus(t.ID, "COMPLETED")
 		return
 	}
 
+	fmt.Printf("CrawlRequest %d: Crawling new page (url %s, level %d)\n", t.CrawlRequestID, t.PageURL, t.CurrentLevel)
 	// get relevant page node
 	p, err := c.db.UpsertPage(t.PageURL)
 	if err != nil {
@@ -96,7 +97,7 @@ func (c *GraphCrawler) run(t *crawlerdb.Task) {
 	}
 
 	// find next urls, either using the already unfolded graph, or by crawling
-	// the current page
+	// the current page.
 	var urls []string
 	if !page.CrawledStatus {
 		urls, err = c.crawlPage(page)
@@ -113,7 +114,7 @@ func (c *GraphCrawler) run(t *crawlerdb.Task) {
 	}
 
 	// add tasks for outlinks on the page
-	err = c.addNewTasks(t, cr.Levels, urls)
+	err = c.addNewTasks(t, cr.ID, cr.Levels, urls)
 	if err != nil {
 		c.handleError(t, err)
 		return
@@ -167,28 +168,45 @@ func (c *GraphCrawler) nextPagesFromEdges(page *crawlerdb.Page) ([]string, error
 }
 
 // addNewTasks adds new tasks to the database, if necessary.
-func (c *GraphCrawler) addNewTasks(t *crawlerdb.Task, levels int, urls []string) error {
+func (c *GraphCrawler) addNewTasks(t *crawlerdb.Task, crawlRequestID int, levels int, urls []string) error {
+	crawledURLs := make(map[string]bool)
+	tasks, err := c.db.GetCrawlRequestTasks(crawlRequestID)
+	if err != nil {
+		return err
+	}
+	for _, t := range tasks {
+		crawledURLs[t.PageURL] = true
+	}
+	var count int
+	var seen bool
 	if t.CurrentLevel < levels {
-		fmt.Printf("Adding %d new tasks.\n", len(urls))
 		for _, u := range urls {
-			err := c.db.CreateTask(t.CrawlRequestID, u, t.CurrentLevel+1)
+			if crawledURLs[u] {
+				seen = true
+			} else {
+				seen = false
+				crawledURLs[u] = true
+				count++
+			}
+			err := c.db.CreateTask(t.CrawlRequestID, u, t.CurrentLevel+1, seen)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
 		}
 	}
+	fmt.Printf("CrawlRequest %d: Added %d new tasks that actually need crawling.\n", crawlRequestID, count)
 	return nil
 }
 
 // handleError prints out an informative error message and sets the task status
 // to FAILED in the event of an error.
 func (c *GraphCrawler) handleError(t *crawlerdb.Task, err error) {
-	fmt.Printf("Error while crawling task %d (url %s) at level %d for CrawlRequest %v: %s\n", t.ID, t.PageURL, t.CurrentLevel, t.CrawlRequestID, err)
+	fmt.Printf("CrawlRequest %v: Error while crawling task %d (url %s) at level %d: %s\n", t.CrawlRequestID, t.ID, t.PageURL, t.CurrentLevel, err)
 	if t != nil {
 		err = c.db.UpdateTaskStatus(t.ID, "FAILED")
 		if err != nil {
-			fmt.Printf("Error while updating task %d (url %s) at level %d for CrawlRequest %v: %s\n", t.ID, t.PageURL, t.CurrentLevel, t.CrawlRequestID, err)
+			fmt.Printf("CrawlRequest %v: Error while updating task %d (url %s) at level %d: %s\n", t.CrawlRequestID, t.ID, t.PageURL, t.CurrentLevel, err)
 		}
 	}
 	// debug.PrintStack()

@@ -26,7 +26,7 @@ func (s *Server) router(w http.ResponseWriter, req *http.Request) {
 		u := strings.Split("/"+path.Clean(req.URL.Path), "/")
 		id, err := strconv.Atoi(u[3])
 		if err != nil {
-			http.Error(w, "invalid id: "+u[3], http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf(`{"error": "Invalid id submitted (id must be number): %s"}`, u[3]), http.StatusBadRequest)
 		}
 		switch u[2] {
 		case "status":
@@ -35,7 +35,7 @@ func (s *Server) router(w http.ResponseWriter, req *http.Request) {
 			s.resultsHandler(w, req, id)
 		}
 	} else {
-		http.Error(w, "Not a valid endpoint: "+req.URL.Path, http.StatusNotFound)
+		http.Error(w, fmt.Sprintf(`{"error": "Not a valid endpoint: %s"}`+req.URL.Path), http.StatusNotFound)
 	}
 }
 
@@ -60,11 +60,11 @@ func (s *Server) createHandler(w http.ResponseWriter, req *http.Request) {
 
 	id, err := s.db.CreateCrawlRequest(c.URL, c.Levels)
 	if err != nil {
-		w.Write([]byte("Error while creating request: " + err.Error()))
+		w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
 		s.Logger.Printf("Error from request %s: %s", req.URL.Path, err.Error())
 		return
 	}
-	resp := fmt.Sprintf("Created new crawl request starting from %s with %d levels.\nRequest ID: %d", c.URL, c.Levels, id)
+	resp := fmt.Sprintf(`{"crawl_request_id": %d, "levels": %d, "url": "%s"}`, id, c.Levels, c.URL)
 	w.Write([]byte(resp))
 }
 
@@ -73,24 +73,20 @@ func (s *Server) statusHandler(w http.ResponseWriter, req *http.Request, id int)
 	cr, err := s.db.GetCrawlRequest(id)
 	if err != nil {
 		if err == crawlerdb.ErrDoesNotExist {
-			http.Error(w, "There is no crawl request with this id.", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf(`{"error": "There is no crawl request with this id: %d"}`, id), http.StatusInternalServerError)
 		} else {
-			http.Error(w, err.Error()+".", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)
 		}
 		return
 	}
-	crs, err := s.db.CrawlRequestStatus(id)
+	crStatuses, err := s.db.CrawlRequestStatus(id)
 	if err != nil {
-		http.Error(w, err.Error()+".", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
 	var status string
-	total := crs.InProgress + crs.Completed + crs.Failed
-	if total == 0 {
-		status = fmt.Sprintf("CrawlRequest %d not started yet.", id)
-	} else {
-		status = fmt.Sprintf("Starting from %s: Completed %d URLs. Crawling in progress on %d URLs. Failed to crawl %d URLs. Total attempted crawls: %d", cr.URL, crs.Completed, crs.InProgress, crs.Failed, total)
-	}
+	total := crStatuses.InProgress + crStatuses.Completed + crStatuses.Failed
+	status = fmt.Sprintf(`{"url": "%s", "crawl_request_id": %d, "completed": %d, "failed": %d, "in_progress": %d, "total": %d}`, cr.URL, id, crStatuses.Completed, crStatuses.Failed, crStatuses.InProgress, total)
 	w.Write([]byte(status))
 }
 
@@ -99,28 +95,28 @@ func (s *Server) resultsHandler(w http.ResponseWriter, req *http.Request, id int
 	cr, err := s.db.GetCrawlRequest(id)
 	if err != nil {
 		if err == crawlerdb.ErrDoesNotExist {
-			http.Error(w, "There is no crawl request with this id.", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf(`{"error": "There is no crawl request with this id: %d"}`, id), http.StatusInternalServerError)
 		} else {
-			http.Error(w, err.Error()+".", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)
 		}
 		return
 	}
 	tasks, err := s.db.GetCrawlRequestTasks(id)
 	if err != nil {
-		http.Error(w, "Could not retrieve results: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	hosts, err := s.hostCounter(tasks, id, cr.URL)
 	if err != nil {
-		http.Error(w, "Could not retrieve results: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	h, err := json.Marshal(hosts)
 	if err != nil {
-		http.Error(w, "Could unmarshal results into json: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`{"error": "%s"}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
-	w.Write([]byte("Hosts found: " + string(h)))
+	w.Write([]byte(string(h)))
 }
 
 // hostCounter is a helperfunction for resultsHandler that takes in a list of
@@ -135,7 +131,7 @@ func (s *Server) hostCounter(tasks []*crawlerdb.Task, crawlRequestID int, origin
 	originalHost := o.Hostname()
 	for _, t := range tasks {
 		if t.Status == "IN_PROGRESS" || t.Status == "NOT_STARTED" {
-			return hosts, errors.New("CrawlRequest not yet completed")
+			return hosts, errors.New(`{"error": "crawl request not yet completed"}`)
 		}
 		u, err := url.Parse(t.PageURL)
 		if err != nil {

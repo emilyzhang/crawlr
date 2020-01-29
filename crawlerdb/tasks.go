@@ -12,12 +12,11 @@ var (
 )
 
 // CreateTask creates a new task.
-func (p *Postgres) CreateTask(crawlRequestID int, url string, currLevel int) error {
+func (p *Postgres) CreateTask(crawlRequestID int, url string, currLevel int, seen bool) error {
 	_, err := p.db.Exec(
 		`INSERT INTO tasks
-		(id, crawl_request_id, page_url, current_level, status)
-		VALUES (DEFAULT, $1, $2, $3, $4)
-		ON CONFLICT DO NOTHING`, crawlRequestID, url, currLevel, "NOT_STARTED")
+		(id, crawl_request_id, page_url, current_level, status, seen_url)
+		VALUES (DEFAULT, $1, $2, $3, $4, $5)`, crawlRequestID, url, currLevel, "NOT_STARTED", seen)
 	if err != nil {
 		return fmt.Errorf("Unable to create task: %v", err)
 	}
@@ -48,8 +47,8 @@ func (p *Postgres) FindIncompleteTask() (*Task, error) {
 			WHERE status=$2
 			ORDER BY crawl_request_id ASC
 			LIMIT 1)
-		RETURNING id, crawl_request_id, page_url, current_level, status`, "IN_PROGRESS", "NOT_STARTED")
-	err := result.Scan(&t.ID, &t.CrawlRequestID, &t.PageURL, &t.CurrentLevel, &t.Status)
+		RETURNING id, crawl_request_id, page_url, current_level, status, seen_url`, "IN_PROGRESS", "NOT_STARTED")
+	err := result.Scan(&t.ID, &t.CrawlRequestID, &t.PageURL, &t.CurrentLevel, &t.Status, &t.SeenURL)
 	if err == sql.ErrNoRows {
 		return nil, ErrNoTasksAvailable
 	}

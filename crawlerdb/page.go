@@ -4,7 +4,8 @@ import (
 	"fmt"
 )
 
-// CreatePage creates a new page node.
+// UpsertPage creates a new page node if a page node with that url doesn't
+// already exist, otherwise it returns the existing page node.
 func (p *Postgres) UpsertPage(url string) (int, error) {
 	var id int
 	result := p.db.QueryRow(
@@ -20,7 +21,7 @@ func (p *Postgres) UpsertPage(url string) (int, error) {
 	return id, err
 }
 
-// GetPageByID returns the page node associated with the given id.
+// GetPage returns the page node associated with the given id.
 func (p *Postgres) GetPage(id int) (*Page, error) {
 	var page Page
 	result := p.db.QueryRow(

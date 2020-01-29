@@ -31,7 +31,7 @@ func (p *Postgres) CreateCrawlRequest(urlString string, levels int) (int, error)
 		return id, fmt.Errorf("Unable to create crawl request with url %s and level %d: %v", urlString, levels, err)
 	}
 	// create first task for crawl request
-	err = p.CreateTask(id, pageURL.String(), 0)
+	err = p.CreateTask(id, pageURL.String(), 0, false)
 	if err != nil {
 		return id, fmt.Errorf("Unable to create task for crawl request %d: %v", id, err)
 	}
@@ -91,7 +91,7 @@ func (p *Postgres) CrawlRequestStatus(crawlRequestID int) (*CrawlRequestStatus, 
 func (p *Postgres) GetCrawlRequestTasks(crawlRequestID int) ([]*Task, error) {
 	var tasks []*Task
 	rows, err := p.db.Query(
-		`SELECT id, crawl_request_id, page_url, current_level, status
+		`SELECT id, crawl_request_id, page_url, current_level, status, seen_url
 		FROM tasks
 		WHERE crawl_request_id = $1`, crawlRequestID)
 	if err != nil {
@@ -101,7 +101,7 @@ func (p *Postgres) GetCrawlRequestTasks(crawlRequestID int) ([]*Task, error) {
 
 	for rows.Next() {
 		t := Task{}
-		if err := rows.Scan(&t.ID, &t.CrawlRequestID, &t.PageURL, &t.CurrentLevel, &t.Status); err != nil {
+		if err := rows.Scan(&t.ID, &t.CrawlRequestID, &t.PageURL, &t.CurrentLevel, &t.Status, &t.SeenURL); err != nil {
 			return tasks, fmt.Errorf("Unable to scan tasks for crawl request with id %d: %v", crawlRequestID, err)
 		}
 		tasks = append(tasks, &t)
