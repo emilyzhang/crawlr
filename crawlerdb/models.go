@@ -28,6 +28,7 @@ type Task struct {
 	PageURL        string
 	CurrentLevel   int
 	Status         string
+	SeenURL        bool
 }
 
 // CrawlRequestStatus represents the status of a CrawlRequest.

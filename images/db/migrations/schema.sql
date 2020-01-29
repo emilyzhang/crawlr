@@ -23,5 +23,5 @@ CREATE TABLE tasks (
     page_url         TEXT NOT NULL,
     current_level    INTEGER NOT NULL,
     status           TEXT NOT NULL,
-    UNIQUE(crawl_request_id, page_url)
+    seen_url         BOOLEAN NOT NULL
 );

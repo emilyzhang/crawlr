@@ -6,11 +6,11 @@ crawlr recursively crawls URLs.
 
 ### Build & run
 
-Make sure that your local 8000 and 5432 ports aren't allocated by any local
-services before running the following command, otherwise the services will fail
-to start. This following command will spin up a postgres container, a container
-running the crawlr API (serving on localhost:8000/), and a worker container for
-the crawler.
+Make sure that the docker daemon is running and your local 8000 and 5432 ports
+aren't allocated by any local services before running the following command,
+otherwise the services will fail to start. This following command will spin up a
+postgres container, a container running the crawlr API (serving on
+localhost:8000/), and a worker container for the crawler.
 
 ```bash
 DSN="postgresql://user:test@db:5432/crawlr" MAX_WORKERS=30 docker-compose -f ./deployments/docker-compose.yml up --build
@@ -44,8 +44,8 @@ go test -v ./...
 
 ```json
 {
-  "url": "somehost.com",
-  "levels": 1
+  "url": "mlyzhng.com",
+  "levels": 2
 }
 ```
 
@@ -54,34 +54,90 @@ go test -v ./...
 
 **Response**
 
-Returns the request body
+```json
+{
+  "crawl_request_id": 1,
+  "url": "mlyzhng.com",
+  "levels": 2
+}
+```
+
+crawl_request_url `int`: Represents the ID of the created CrawlRequest. 
+- url `string`: Represents the URL to crawl.
+- levels `int`: Represents the number of levels of recursion.
+
 
 **Example**
 
 To create a CrawlRequest starting from google.com with 2 levels of recursion:
 
 ```bash
-curl localhost:8000/crawl --data '{"url": "google.com", "levels": 2}'
+curl localhost:8000/crawl --data '{"url": "mlyzhng.com", "levels": 2}' | jq
 ```
 
 ### `GET /status/:id`
 
 **Response**
 
-Returns the current status of the CrawlRequest.
+```json
+{
+  "crawl_request_id": 4,
+  "url": "http://mlyzhng.com",
+  "completed": 19,
+  "in_progress": 0,
+  "failed": 1,
+  "total": 20
+}
+```
+- crawl_request_url `int`: Represents the ID of the created CrawlRequest. 
+- url `string`: Represents the URL to crawl.
+- completed `int`: Represents the number of tasks completed.
+- in_progress `int`: Represents the number of tasks in progress.
+- failed `int`: Represents the number of tasks failed.
+- total `int`: Represents the number of tasks attempted in total.
+
 
 **Example**
 
 To check the status of the CrawlRequest with id `1`:
 
 ```bash
-curl localhost:8000/status/1
+curl localhost:8000/status/1 | jq
 ```
 
 ### `GET /results/:id`
 
 **Response**
-
+```json
+{
+  "avatars2.githubusercontent.com": 1,
+  "dashboard.lob.com": 5,
+  "developer.github.com": 1,
+  "education.github.com": 2,
+  "enterprise.github.com": 1,
+  "github.blog": 1,
+  "github.com": 12,
+  "github.community": 1,
+  "githubstatus.com": 1,
+  "go.lob.com": 2,
+  "help.github.com": 7,
+  "i.imgur.com": 11,
+  "images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com": 31,
+  "lab.github.com": 1,
+  "library.lob.com": 4,
+  "lob.com": 74,
+  "opensource.guide": 1,
+  "status.lob.com": 1,
+  "support.lob.com": 3,
+  "training.github.com": 1,
+  "twitter.com": 1,
+  "www.facebook.com": 1,
+  "www.github.com": 79,
+  "www.goodreads.com": 8,
+  "www.instagram.com": 2,
+  "www.linkedin.com": 3
+}
+```
 Returns a JSON object containing counts of each unique host name found while
 crawling (excluding counts of the original hostname in the supplied URL when the
 CrawlRequest was created).
@@ -91,7 +147,7 @@ CrawlRequest was created).
 To check the results of the CrawlRequest with id `1`:
 
 ```bash
-curl localhost:8000/results/1
+curl localhost:8000/results/1 | jq
 ```
 
 ## Design Decisions
@@ -246,3 +302,7 @@ simplified my database queries which seemed to help (I ran some manual crawl
 request tests to check for deadlocks or other errors and didn't see any), but
 I'd love to learn more about how to improve my system/algorithm design in a way
 that I can provably avoid concurrency issues.
+
+I also realized I had a bug in my cycle detection/algorithm for not
+visiting previously visited backlinks, where I wasn't counting hosts correctly
+because I tried to visit each URL only once in a crawl request.
