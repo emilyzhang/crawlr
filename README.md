@@ -1,4 +1,6 @@
 # crawlr
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Femilyzhang%2Fcrawlr.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Femilyzhang%2Fcrawlr?ref=badge_shield)
+
 
 crawlr recursively crawls URLs.
 
@@ -306,3 +308,7 @@ that I can provably avoid concurrency issues.
 I also realized I had a bug in my cycle detection/algorithm for not
 visiting previously visited backlinks, where I wasn't counting hosts correctly
 because I tried to visit each URL only once in a crawl request.
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Femilyzhang%2Fcrawlr.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Femilyzhang%2Fcrawlr?ref=badge_large)
